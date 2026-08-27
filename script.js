@@ -243,6 +243,77 @@
   }
 
   /* ---------------------------------------------------
+     Assistant widget icons
+
+     The voice and chat launchers are injected by a
+     third-party loader that hard-codes its own glyphs and
+     exposes no icon option, so we replace the SVG in place
+     once each bubble mounts. Only the glyph changes — the
+     button, its listeners, and the panel are untouched.
+     --------------------------------------------------- */
+  var WIDGET_ICONS = {
+    // Headset — "talk to a real person" reads clearer than a bare mic.
+    voice: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+           '<path d="M3 11h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H4a1 1 0 0 1-1-1v-5a9 9 0 0 1 18 0v5a1 1 0 0 1-1 1h-2a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/>' +
+           '<path d="M21 16v2a4 4 0 0 1-4 4h-5"/></svg>',
+    // Stacked speech bubbles — a conversation, not a single message.
+    chatbot: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+             '<path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2Z"/>' +
+             '<path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></svg>'
+  };
+
+  function widgetKind(bubble) {
+    var label = (bubble.getAttribute('aria-label') || '').toLowerCase();
+    if (/talk|voice|speak/.test(label)) return 'voice';
+    if (/chat|message/.test(label)) return 'chatbot';
+    // Labels are configurable on the embed tag, so fall back to the
+    // shape of the glyph the loader shipped.
+    var path = bubble.querySelector('svg path');
+    var d = path ? (path.getAttribute('d') || '') : '';
+    if (d.indexOf('M12 2a3') === 0) return 'voice';
+    if (d.indexOf('M21 15a2') === 0) return 'chatbot';
+    return null;
+  }
+
+  function paintWidgetIcon(bubble) {
+    if (bubble.hasAttribute('data-haulo-icon')) return;
+    var kind = widgetKind(bubble);
+    if (!kind) return;
+    bubble.setAttribute('data-haulo-icon', kind);
+    bubble.innerHTML = WIDGET_ICONS[kind];
+
+    var svg = bubble.querySelector('svg');
+    if (!svg) return;
+    // Our global `svg{width:100%;height:100%;fill:currentColor}` rule would
+    // otherwise stretch these outline glyphs to the edge of the bubble and
+    // flood their interiors, so pin size and paint inline.
+    svg.style.setProperty('width', '26px', 'important');
+    svg.style.setProperty('height', '26px', 'important');
+    var parts = bubble.querySelectorAll('svg, svg *');
+    for (var p = 0; p < parts.length; p++) {
+      parts[p].style.setProperty('fill', 'none', 'important');
+      parts[p].style.setProperty('stroke', 'currentColor', 'important');
+    }
+  }
+
+  function scanWidgetBubbles() {
+    var bubbles = document.querySelectorAll('.lv-widget-bubble');
+    Array.prototype.forEach.call(bubbles, paintWidgetIcon);
+    return bubbles.length;
+  }
+
+  // The launchers mount asynchronously, and only for widgets that are live,
+  // so watch for them instead of assuming they exist at load.
+  if (scanWidgetBubbles() < 2 && 'MutationObserver' in window) {
+    var widgetWatch = new MutationObserver(function () {
+      if (scanWidgetBubbles() >= 2) widgetWatch.disconnect();
+    });
+    widgetWatch.observe(document.body, { childList: true });
+    // If a launcher never arrives, stop watching rather than linger forever.
+    window.setTimeout(function () { widgetWatch.disconnect(); }, 20000);
+  }
+
+  /* ---------------------------------------------------
      Footer year (keeps copyright accurate over time)
      --------------------------------------------------- */
   var yearHost = document.querySelector('.footer__bottom p');
